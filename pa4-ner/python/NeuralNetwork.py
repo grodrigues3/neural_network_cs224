@@ -166,11 +166,16 @@ class NeuralNetwork:
         sig = self._sigmoid( np.dot(a.T, U) )
         dh = (self.labels.T/sig - (1-self.labels.T)/(1-sig) )*-1.
 
-        scale = float(np.dot( dh.T, (sig* (1-sig)) ))
+        first = dh*sig*(1-sig) #m x 1
         #all elementwise
-        deriv = scale*U * (1-(a*a))
-        deriv = np.dot(np.matrix(deriv.T[0,1:]), self.W).T
-        return deriv
+        try:
+            second = U *(1-(a*a) ) #H x m
+            third = np.dot(second,first) # #H x1
+            final = np.dot(W.T, third[1:,:])
+        except:
+            pdb.set_trace()
+        #deriv = np.dot(np.matrix(deriv.T[0,1:]), self.W).T
+        return final
 
 
     def d_theta(self, W=None, U=None, b=None):
@@ -193,36 +198,75 @@ class NeuralNetwork:
 
 
     def _gradient_check(self):
-        numPerts= self.W.size #+ self.b1.size + self.U.size
+        """
+        """
+
+        print "Checking the gradient calculations"
         eps = .0001
+
+        #Pick some random values for the paramters (except for L)
         W = np.random.random((self.dimHidden,self. dimIn*self.nIns)) * 2*self.e_init - self.e_init
         U = np.random.random((self.dimHidden+1, 1))* 2*self.e_init - self.e_init
         b1 = np.random.random((self.dimHidden, 1))* 2*self.e_init - self.e_init
-        #L = np.zeros(self.L.shape)
 
 
-        """
-        for ind,element in enumerate(dth[0]):
-            if element - 0 > .01 or 0 - element < .01:
-                pass
-            else:
-                print ind,element
-        """
+
         #W = np.random.random(self.W.shape)
-        start = W.size + U.size
-        for i in range(b1.shape[0]):
-            for j in range(b1.shape[1]):
+        start =0
+        #for i in range(W.size + U.size + b1.size + L.shape[0]*3):
+        for i in range(15351-150, 15351):
+                #calculate the gradient according to myImplementations
                 dth= self.d_theta(W,U,b1)
-                b1[i,j] += eps
-                plus_eps = self.feedforward(W,U,b1)
-                #print plus_eps.shape, self.labels.shape
-                dth= self.d_theta(W,U,b1)
-                initial = self.costFunctionReg(plus_eps, self.labels.T,C=0)
-                b1[i,j] -= 2*eps
-                minus_eps = self.feedforward(W,U,b1)
-                changed = self.costFunctionReg(minus_eps, self.labels.T,C=0)
+
+                #calculate the approximation
+                if i < W.size:
+                    case = "W"
+                    row,col = i/W.shape[1], i%W.shape[1]
+                    W[row,col] += eps
+                    plus_eps = self.feedforward(W,U,b1)
+                    initial = self.costFunctionReg(plus_eps, self.labels.T,C=0)
+                    W[row,col] -= 2*eps
+                    minus_eps = self.feedforward(W,U,b1)
+                    changed = self.costFunctionReg(minus_eps, self.labels.T,C=0)
+                elif i < W.size + U.size:
+                    case = "U"
+                    Uind =i - W.size
+                    row,col = Uind/U.shape[1], Uind%U.shape[1]
+                    #print "U", col,row,i
+                    U[row,col] += eps
+                    plus_eps = self.feedforward(W,U,b1)
+                    initial = self.costFunctionReg(plus_eps, self.labels.T,C=0)
+                    U[row,col] -= 2*eps
+                    minus_eps = self.feedforward(W,U,b1)
+                    changed = self.costFunctionReg(minus_eps, self.labels.T,C=0)
+                elif i < W.size + U.size +b1.size:
+                    case = "b1"
+                    bind =i - (W.size+U.size)
+                    row,col = bind/b1.shape[1], bind%b1.shape[1]
+                    #print "b1", col,row,i
+                    b1[row,col] += eps
+                    plus_eps = self.feedforward(W,U,b1)
+                    initial = self.costFunctionReg(plus_eps, self.labels.T,C=0)
+                    b1[row,col] -= 2*eps
+                    minus_eps = self.feedforward(W,U,b1)
+                    changed = self.costFunctionReg(minus_eps, self.labels.T,C=0)
+                else:
+                    case = "L"
+                    Lind =i - (W.size+U.size + b1.size)
+                    row,col = Lind/L.shape[1], Lind%L.shape[1]
+                    #print "L", col,row,i
+                    self.trainingData[row,col] += eps
+                    plus_eps = self.feedforward(W,U,b1)
+                    initial = self.costFunctionReg(plus_eps, self.labels.T,C=0)
+                    self.trainingData[row,col] -= 2*eps
+                    minus_eps = self.feedforward(W,U,b1)
+                    changed = self.costFunctionReg(minus_eps, self.labels.T,C=0)
+
                 approx = (initial - changed) / (2* eps)
-                print approx, dth[0, start+i+j], approx-dth[0, start+i+j]
+                print "Parameter, Approximation, From Function, Difference, Index"
+                if approx-dth[0, i] > 1e-4 or i %100 ==0:
+                    print case, approx, dth[0, i], approx-dth[0, i], i
+
 
 
 
