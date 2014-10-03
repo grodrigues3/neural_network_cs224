@@ -1,0 +1,21 @@
+    with open(self.filename, 'r') as f:
+            sentence = []
+            myC = 0
+            skipCount = 0
+            goodCount = 0
+            for line in f:
+                try:
+                    word, label = line.split()
+                    intLabel = 1 if label == "PERSON" else 0
+                except:
+                    print "skipping this line"
+                    skipCount +=1
+                    print skipCount
+                    continue
+                if word == allSentences[myC]:
+                    goodCount +=1
+                    print goodCount
+                if intLabel != self.labels[myC]:
+                    print myC, line
+                    raw_input()
+                myC +=1
