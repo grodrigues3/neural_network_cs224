@@ -3,81 +3,115 @@ import numpy as np
 import scipy as sp
 from WindowModel import *
 from WordMatrix import *
+import time
 
+from sklearn.externals import joblib
 
 dataDir = "../data/"
 dataFile = dataDir +"train"
 vocab = dataDir +"vocab.txt"
+testFile = dataDir+"dev"
 wordDim = 50
 
 class NeuralNetwork:
 
-    def __init__(self, nIns=3, nOuts=1, dimHidden=100, dimIn=50):
+    def __init__(self, contextSize=5, nOuts=1, dimHidden=100, dimIn=50):
+
+
         self.vocabMatrix = WordMatrix()
+        self.contextSize = contextSize
+        self.windowModel = WindowModel( testFile, self.vocabMatrix, (self.contextSize - 1)/2 )
         self.alpha = .1
-        self.nIns = nIns
         self.nOuts = nOuts
         self.dimHidden = dimHidden
         self.dimIn = dimIn
 
-        self.e_init = np.sqrt(6) / np.sqrt(nIns*dimIn + dimHidden)
-        self.W = np.random.random((self.dimHidden,self. dimIn*self.nIns)) * 2*self.e_init - self.e_init
-        self.U = np.random.random((self.dimHidden+1, 1))* 2*self.e_init - self.e_init
-        self.b1 = np.random.random((self.dimHidden, 1))* 2*self.e_init - self.e_init
-        self.L = self.vocabMatrix.wordMatrix
 
-        self.trainingData   =       None
-        self.labels         =       None
+        self.e_init     = np.sqrt(6) / np.sqrt(contextSize*dimIn + dimHidden)
+        self.W          = np.random.random((self.dimHidden,self. dimIn*self.contextSize)) * 2*self.e_init - self.e_init
+        self.U          = np.random.random((self.dimHidden+1, 1))* 2*self.e_init - self.e_init
+        self.b1         = np.random.random((self.dimHidden, 1))* 2*self.e_init - self.e_init
+        self.L          = self.vocabMatrix.wordMatrix
 
+        self.labels      =       None
+        self.trainingData=       None
 
-    def train(self, train, labels):
+    def train(self):
         """
-        :param train: m x nC
-        :param labels: m x 1 (or m x numOutputNodes)
+        Feed an example forward, then calculate the derivative of the loss for each of the parameters
+        and update the derivative accordingly
+
+        :param train:
+        :param labels:
         :return:
         """
-        batchSize = 10
+        wordTuples = self.windowModel.generate_word_tuples()
+        trainingMatrix, labels = self.windowModel.generate_word_vectors()
+        self.trainingData = trainingMatrix
+        alpha = .001
+        train = True
 
-        W   = self.W
-        U   = self.U
-        b1   = self.b1
+        if not train:
+            print "Beginning SGD...."
+            s = time.time()
+            for x in range(20):
+                for trEx in range(trainingMatrix.shape[0]):
+                    ex = trainingMatrix[trEx:trEx+1,:] #stupid way to get one row without screwing up the dimensions
+                    label = labels[:, trEx:trEx+1]
+                    wT = wordTuples[trEx]
+                    self.labels = label
+                    dW, dU, db1, dL = self.dTHETA(self.W, self.U, self.b1, ex)
+                    self.W -= alpha * dW
+                    self.U -= alpha * dU
+                    self.b1 -= alpha * db1
+
+                    for i in range(self.contextSize):
+                        wordInd = wT[i]
+                        self.L[:, wordInd] -= dL[i*self.dimIn:(i+1)*self.dimIn, 0]
+
+                    if trEx%5000==0:
+                        print x, trEx, "Elapsed Time: ", time.time() - s
+
+            joblib.dump([self.W, self.U, self.b1, self.L], 'trainedPar_20.pkl')
+        else:
+            self.W, self.U, self.b1, self.L = joblib.load('trainedPar_20.pkl')
+
+        #self._gradient_check()
+        finalPreds = self.feedforward()
+        print self.f1_score(labels, finalPreds)
+
+    def f1_score(self, trueVals, predictions):
+        trueVals = trueVals.T
+        predictions = predictions > .5
+        truePos = 0
+        falsePos = 0
+        falseNeg =0
+
+        for i,label in enumerate(trueVals):
+            if label and predictions[i]:
+                truePos +=1
+            if not label and predictions[i]:
+                falsePos +=1
+            if label and not predictions[i]:
+                falseNeg +=1
+
+        recall = 1.0*truePos / (truePos + falseNeg)
+        precision = 1.0*truePos / (truePos+falsePos)
+
+        f1 = 2.0*precision*recall / (precision+recall)
+        return f1
 
 
-        self.trainingData = train[:1,:]
-        #self.trainingDat = np.zeros(self.trainingData.shape)
-        self.labels = labels[:,:1]
-        #print self.labels
-        #print self.costFunctionReg(, self.labels, 0)
-        #print "hypothesis", n.feedforward().shape
-        #print "dh", n.dJ_dh(W,U,b1).shape
-        #print "U", self.dJ_dU(W,U,b1).shape
-        #print "W", self.dJ_dW(W,U,b1).shape
-        #print "b1", self.dJ_db(W,U,b1).shape
-        #print "L", self.dJ_dL(W,U,b1).shape
-
-        print "grad_check",
-        X = self._gradient_check()
-        # print X.shape
-        # for x in range(W.size):
-        #     print X[0,x]
-        # for y in range(U.size):
-        #     print X[0,x+y]
-        #
-        # for z in range(b1.size):
-        #     print X[0,x+y+z]
-        #
-        # for zz in range(L.size):
-        #     print X[0,x+y+z+zz]
-
-
-    def feedforward(self, W=None, U=None, b1=None):
+    def feedforward(self, W=None, U=None, b1=None, trEx=None):
         if W == None:
             W = self.W
         if U == None:
             U = self.U
         if b1 == None:
             b1 = self.b1
-        z = np.dot(W, self.trainingData.T)+ b1
+        if trEx == None:
+            trEx = self.trainingData
+        z = np.dot(W, trEx.T)+ b1
         a = np.tanh(z)
         bias = np.ones((1,a.shape[1]))
         myA = np.vstack( (bias, a) )
@@ -106,8 +140,6 @@ class NeuralNetwork:
         J += reg
         return J[0][0]
 
-
-
     ###########################
     #DERIVATIVE CALCULATIONS
     ###########################
@@ -117,7 +149,46 @@ class NeuralNetwork:
         self.dh = self.labels.T/g - (1-self.labels.T)/(1-g)
         return -1*self.dh
 
-    def dJ_dU(self,W=None, U=None, b1=None):
+    def dTHETA(self, W=None, U=None, b1=None, trEx = None):
+
+        ##Forward Propagation
+        z       = np.dot(W, trEx.T)+ b1
+        a       = np.tanh(z)
+        bias    = np.ones((1,a.shape[1]))
+        a       = np.vstack( (bias, a) )
+        sig     = self._sigmoid( np.dot(a.T, U) )
+
+        ##Part 1 of the chain rule dh = dJ/dh
+        dh = (self.labels.T/sig - (1-self.labels.T)/(1-sig) )*-1.
+
+        ##dJ/dU     = tanh(W[x_bar]+b1) x [(1-y)/(1-h) - y/h ] .* sig .* (1-sig)
+        ##          = a x [dh] .* sig .* (1-sig)
+        ##          = (Hx1) x (1xm) x(mx1) = Hx1
+        dU = np.dot(a, dh *(sig *(1-sig) ) )
+
+
+        ##dJ/dW     = [U .* [1-tanh**2 ( W[x] + b1)] .* [(1-y)/(1-h) - y/h ] .* sig .* (1-sig)] x [x_bar]
+        ##          = U .* (1-a**2) .* [dh] .* sig .* (1-sig) x  [x_bar]
+        ##          = (Hx1) .* (Hxm) x(mxCn) = HxCn
+        front   = dh*sig*(1-sig)
+        middle  =  (U*(1-a*a)) * front
+        dW      = np.dot(middle, trEx)[1:,:]
+
+
+        ##db1       = [U .* [1-tanh**2 ( W[x] + b1)] .* [(1-y)/(1-h) - y/h ] .* sig .* (1-sig)] x [x_bar]
+        ##          = U .* (1-a**2) .* [dh] .* sig .* (1-sig)
+        ##          = (Hx1) .* (Hxm) .* (1 xm) = Hx1
+        db1         =  middle[1:,:]
+
+
+        second = U *(1-(a*a) ) #H x m
+        third = np.dot(second,front) # #H x1
+        dL = np.dot(W.T, third[1:,:])
+
+        return dW, dU, db1, dL
+
+
+    def dJ_dU(self,W=None, U=None, b1=None, trEx=None):
         """
         a = H x m
         sig = m x1
@@ -125,7 +196,7 @@ class NeuralNetwork:
         :return:
         """
 
-        z = np.dot(W, self.trainingData.T)+ b1
+        z = np.dot(W,trEx.T)+ b1
         a = np.tanh(z)
         bias = np.ones((1,a.shape[1]))
         a = np.vstack( (bias, a) )
@@ -135,8 +206,8 @@ class NeuralNetwork:
         return deriv
 
 
-    def dJ_dW(self, W=None, U=None, b1=None):
-        z = np.dot(W, self.trainingData.T)+ b1
+    def dJ_dW(self, W=None, U=None, b1=None,trEx=None):
+        z = np.dot(W, trEx.T)+ b1
         a = np.tanh(z)
         bias = np.ones((1,a.shape[1])) # 1x numTrainingExamples
         a = np.vstack( (bias, a) )
@@ -144,22 +215,19 @@ class NeuralNetwork:
         dh = (self.labels.T/sig - (1-self.labels.T)/(1-sig) )*-1.
         front = dh*sig*(1-sig) #m x 1
         middle =  (U*(1-a*a)) * front # H x m
-        deriv = np.dot(middle, self.trainingData)
+        deriv = np.dot(middle, trEx)
         return deriv[1:,:]#skip the bias term
 
-    def dJ_db(self, W=None, U=None, b1=None):
-        z = np.dot(W, self.trainingData.T)+ b1
+    def dJ_db(self, W=None, U=None, b1=None,trEx=None):
+        z = np.dot(W, trEx.T)+ b1
         a = np.tanh(z)
         bias = np.ones((1,a.shape[1])) # 1x numTrainingExamples
         a = np.vstack( (bias, a) )
         sig = self._sigmoid( np.dot(a.T, U) )
-        dh = (self.labels.T/sig - (1-self.labels.T)/(1-sig) )*-1.
-        front = dh*sig*(1-sig) #m x 1
-        middle =  (U* ((1-a*a) * front)) # H x m
-        return middle[1:,:] #skip the bias term
 
-    def dJ_dL(self, W=None, U=None, b1=None):
-        z = np.dot(W, self.trainingData.T)+ b1
+
+    def dJ_dL(self, W=None, U=None, b1=None, trEx=None):
+        z = np.dot(W, trEx.T)+ b1
         a = np.tanh(z)
         bias = np.ones((1,a.shape[1]))
         a = np.vstack( (bias, a) )
@@ -168,27 +236,26 @@ class NeuralNetwork:
 
         first = dh*sig*(1-sig) #m x 1
         #all elementwise
-        try:
-            second = U *(1-(a*a) ) #H x m
-            third = np.dot(second,first) # #H x1
-            final = np.dot(W.T, third[1:,:])
-        except:
-            pdb.set_trace()
+        second = U *(1-(a*a) ) #H x m
+        third = np.dot(second,first) # #H x1
+        final = np.dot(W.T, third[1:,:])
         #deriv = np.dot(np.matrix(deriv.T[0,1:]), self.W).T
         return final
 
 
-    def d_theta(self, W=None, U=None, b=None):
-
+    def d_theta(self, W=None, U=None, b=None, trEx =None):
+        """
         dW  =   self.dJ_dW(W,U,b)
         dU  =   self.dJ_dU(W,U,b)
         db  =   self.dJ_db(W,U,b)
         dL  =   self.dJ_dL(W,U,b)
-
+        """
+        dW, dU, db, dL = self.dTHETA(W,U,b, trEx)
         dW  =   dW.reshape( (1, dW.size))
         dU  =   dU.reshape( (1, dU.size))
         db  =   db.reshape( (1, db.size))
         dL  =   dL.reshape( (1, dL.size))
+
 
         dtheta = np.hstack( (dW, dU, db, dL))
 
@@ -205,28 +272,30 @@ class NeuralNetwork:
         eps = .0001
 
         #Pick some random values for the paramters (except for L)
-        W = np.random.random((self.dimHidden,self. dimIn*self.nIns)) * 2*self.e_init - self.e_init
+        W = np.random.random((self.dimHidden,self. dimIn*self.contextSize)) * 2*self.e_init - self.e_init
         U = np.random.random((self.dimHidden+1, 1))* 2*self.e_init - self.e_init
         b1 = np.random.random((self.dimHidden, 1))* 2*self.e_init - self.e_init
-
+        #simulate a randomtraining example
+        trEx = np.random.random( (1, self.contextSize*self.dimIn))* 2*self.e_init - self.e_init
 
 
         #W = np.random.random(self.W.shape)
         start =0
         #for i in range(W.size + U.size + b1.size + L.shape[0]*3):
-        for i in range(15351-150, 15351):
+        print "Parameter, Approximation, From Function, Difference, Index"
+        for i in range(0, 15351):
                 #calculate the gradient according to myImplementations
-                dth= self.d_theta(W,U,b1)
+                dth= self.d_theta(W,U,b1,trEx)
 
                 #calculate the approximation
                 if i < W.size:
                     case = "W"
                     row,col = i/W.shape[1], i%W.shape[1]
                     W[row,col] += eps
-                    plus_eps = self.feedforward(W,U,b1)
+                    plus_eps = self.feedforward(W,U,b1,trEx)
                     initial = self.costFunctionReg(plus_eps, self.labels.T,C=0)
                     W[row,col] -= 2*eps
-                    minus_eps = self.feedforward(W,U,b1)
+                    minus_eps = self.feedforward(W,U,b1,trEx)
                     changed = self.costFunctionReg(minus_eps, self.labels.T,C=0)
                 elif i < W.size + U.size:
                     case = "U"
@@ -234,10 +303,10 @@ class NeuralNetwork:
                     row,col = Uind/U.shape[1], Uind%U.shape[1]
                     #print "U", col,row,i
                     U[row,col] += eps
-                    plus_eps = self.feedforward(W,U,b1)
+                    plus_eps = self.feedforward(W,U,b1,trEx)
                     initial = self.costFunctionReg(plus_eps, self.labels.T,C=0)
                     U[row,col] -= 2*eps
-                    minus_eps = self.feedforward(W,U,b1)
+                    minus_eps = self.feedforward(W,U,b1,trEx)
                     changed = self.costFunctionReg(minus_eps, self.labels.T,C=0)
                 elif i < W.size + U.size +b1.size:
                     case = "b1"
@@ -245,49 +314,44 @@ class NeuralNetwork:
                     row,col = bind/b1.shape[1], bind%b1.shape[1]
                     #print "b1", col,row,i
                     b1[row,col] += eps
-                    plus_eps = self.feedforward(W,U,b1)
+                    plus_eps = self.feedforward(W,U,b1,trEx)
                     initial = self.costFunctionReg(plus_eps, self.labels.T,C=0)
                     b1[row,col] -= 2*eps
-                    minus_eps = self.feedforward(W,U,b1)
+                    minus_eps = self.feedforward(W,U,b1,trEx)
                     changed = self.costFunctionReg(minus_eps, self.labels.T,C=0)
                 else:
                     case = "L"
                     Lind =i - (W.size+U.size + b1.size)
-                    row,col = Lind/L.shape[1], Lind%L.shape[1]
+                    row,col = Lind/trEx.shape[1], Lind%trEx.shape[1]
                     #print "L", col,row,i
-                    self.trainingData[row,col] += eps
-                    plus_eps = self.feedforward(W,U,b1)
+                    trEx[row,col] += eps
+                    plus_eps = self.feedforward(W,U,b1,trEx)
                     initial = self.costFunctionReg(plus_eps, self.labels.T,C=0)
-                    self.trainingData[row,col] -= 2*eps
-                    minus_eps = self.feedforward(W,U,b1)
+                    trEx[row,col] -= 2*eps
+                    minus_eps = self.feedforward(W,U,b1,trEx)
                     changed = self.costFunctionReg(minus_eps, self.labels.T,C=0)
 
                 approx = (initial - changed) / (2* eps)
-                print "Parameter, Approximation, From Function, Difference, Index"
+
                 if approx-dth[0, i] > 1e-4 or i %100 ==0:
                     print case, approx, dth[0, i], approx-dth[0, i], i
-
-
-
-
-
+                    #Just make sure the difference between my calculation and the approximation is sufficiently small
+                    try:
+                        assert approx-dth[0, i] < 1e-4
+                    except AssertionError:
+                        #for debugging
+                        pdb.set_trace()
 
 
     def __str__(self):
         return "{0},{1}, {2}, {3},{4}, {5}. \n{6}".format(self.dimHidden,\
-                                              self.nIns, self.dimIn, self.alpha, \
+                                              self.contextSize, self.dimIn, self.alpha, \
                                               self.W.shape, self.U.shape, self.b1)
 
 
 if __name__ == "__main__":
-    wordMat = WordMatrix()
-    wm = WindowModel(dataFile, wordMat,1)
-
-    ##Lookup happens here
-    trainingMatrix, labels = wm.generate_word_vectors()
-
     n = NeuralNetwork()
-    n.train(trainingMatrix, labels)
+    n.train()
     """
     x = np.random.random((150,1))
     y = np.random.randint(low=0, high =2, size=(150,1))

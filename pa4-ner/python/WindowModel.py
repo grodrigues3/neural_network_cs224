@@ -11,10 +11,11 @@ wordDim = 50
 
 class WindowModel():
     
-    def __init__(self,fn, wm, contextSize=1):
+    def __init__(self,fn, wm, windowPadding=1):
         self.filename = fn
         self.wordMatrix = wm
-        self.contextSize = contextSize
+        self.windowPadding = windowPadding
+        self.contextSize = windowPadding*2 +1
         self.dimSize = 50
         self.allSentences = []
         self.labels = []
@@ -45,12 +46,18 @@ class WindowModel():
                     allSentences += [sentence]
                     sentence = []
 
-            ##in case the last sentence doesn't end with proper punctuation!
+            #in case the last sentence doesn't end with proper punctuation!
             if sentence != []:
                 allSentences += [sentence]
             self.allSentences = allSentences
 
     def generate_word_tuples(self):
+        """
+
+        :return:
+        sentenceTups: A two dimensional list.  The first dimension indexes the sentences and the second gives the tuple
+        self.labels =
+        """
         indexDict = self.wordMatrix.indexDict
         start = indexDict['<s>']
         stop = indexDict['</s>']
@@ -59,7 +66,7 @@ class WindowModel():
             l = len(sentence)
             for ind in range(l):
                 wordAndContext = []
-                for j in range(ind-self.contextSize, ind+self.contextSize+1):
+                for j in range(ind-self.windowPadding, ind+self.windowPadding+1):
                     if j >= 0 and j < l:
                         currentWord = sentence[j][0]
                         wordIndex = indexDict[currentWord] if currentWord in indexDict else 0
@@ -73,16 +80,16 @@ class WindowModel():
         self.allTuples = sentenceTups
         if len(sentenceTups) != len(self.labels):
             print "PROBLEM: The number of tuples and labels do not match"
-        return sentenceTups, self.labels
+        return sentenceTups
 
 
 
     def generate_word_vectors(self):
         if self.allTuples == [] or self.labels == []:
-            #print "you need to generate tuples or labels first"
+            print "Generating Tuples..."
             self.generate_word_tuples()
         m = len(self.allTuples)
-        windowSize = self.contextSize*2+1
+        windowSize = self.windowPadding*2+1
         n = self.dimSize *windowSize
         vocabMatrix = self.wordMatrix.wordMatrix
         trainingMat = np.zeros((m,n))
