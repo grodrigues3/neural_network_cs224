@@ -36,7 +36,7 @@ class NeuralNetwork:
         self.labels      =       None
         self.trainingData=       None
 
-    def train(self):
+    def train(self, numEpochs = 10, saveToFile= False, warmStart=True):
         """
         Feed an example forward, then calculate the derivative of the loss for each of the parameters
         and update the derivative accordingly
@@ -49,33 +49,43 @@ class NeuralNetwork:
         trainingMatrix, labels = self.windowModel.generate_word_vectors()
         self.trainingData = trainingMatrix
         alpha = .001
-        train = True
-
-        if not train:
-            print "Beginning SGD...."
-            s = time.time()
-            for x in range(20):
-                for trEx in range(trainingMatrix.shape[0]):
-                    ex = trainingMatrix[trEx:trEx+1,:] #stupid way to get one row without screwing up the dimensions
-                    label = labels[:, trEx:trEx+1]
-                    wT = wordTuples[trEx]
-                    self.labels = label
-                    dW, dU, db1, dL = self.dTHETA(self.W, self.U, self.b1, ex)
-                    self.W -= alpha * dW
-                    self.U -= alpha * dU
-                    self.b1 -= alpha * db1
-
-                    for i in range(self.contextSize):
-                        wordInd = wT[i]
-                        self.L[:, wordInd] -= dL[i*self.dimIn:(i+1)*self.dimIn, 0]
-
-                    if trEx%5000==0:
-                        print x, trEx, "Elapsed Time: ", time.time() - s
-
-            joblib.dump([self.W, self.U, self.b1, self.L], 'trainedPar_20.pkl')
-        else:
+        if warmStart:
             self.W, self.U, self.b1, self.L = joblib.load('trainedPar_20.pkl')
+        print "Beginning SGD...."
+        s = time.time()
+        for x in range(numEpochs):
+            for trEx in range(trainingMatrix.shape[0]):
+                ex = trainingMatrix[trEx:trEx+1,:] #stupid way to get one row without screwing up the dimensions
+                label = labels[:, trEx:trEx+1]
+                wT = wordTuples[trEx]
+                self.labels = label
+                dW, dU, db1, dL = self.dTHETA(self.W, self.U, self.b1, ex)
+                self.W -= alpha * dW
+                self.U -= alpha * dU
+                self.b1 -= alpha * db1
 
+                for i in range(self.contextSize):
+                    wordInd = wT[i]
+                    self.L[:, wordInd] -= dL[i*self.dimIn:(i+1)*self.dimIn, 0]
+
+                if trEx%5000==0:
+                    print "{0}\t{1:0>5d}\tElapsed Time:{2:.2f} s".format(x, trEx, time.time() - s )
+        if saveToFile:
+            joblib.dump([self.W, self.U, self.b1, self.L], 'trainedPar_60.pkl')
+
+        #self._gradient_check()
+        finalPreds = self.feedforward()
+        print self.f1_score(labels, finalPreds)
+
+    def test(self, tf = testFile):
+        print "Testing your parameters on the test datafile (../data/dev)"
+        testWindowModel = WindowModel( tf, self.vocabMatrix, (self.contextSize - 1)/2 )
+
+        wordTuples = testWindowModel.generate_word_tuples()
+        testMatrix, labels = self.windowModel.generate_word_vectors()
+        self.trainingData = testMatrix
+
+        self.W, self.U, self.b1, self.L = joblib.load('trainedPar_60.pkl')
         #self._gradient_check()
         finalPreds = self.feedforward()
         print self.f1_score(labels, finalPreds)
@@ -351,7 +361,7 @@ class NeuralNetwork:
 
 if __name__ == "__main__":
     n = NeuralNetwork()
-    n.train()
+    n.train(40)
     """
     x = np.random.random((150,1))
     y = np.random.randint(low=0, high =2, size=(150,1))
