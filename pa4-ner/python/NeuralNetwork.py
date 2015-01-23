@@ -1,3 +1,10 @@
+"""
+Neural Network Implementation For Name Entity Recognition
+Based On Programming Assignment 4
+CS 224N / Ling 284
+http://nlp.stanford.edu/~socherr/pa4_ner.pdf
+"""
+__author__ = "grodrigues3"
 import math
 import numpy as np
 import scipy as sp
@@ -12,6 +19,8 @@ dataFile = dataDir +"train"
 vocab = dataDir +"vocab.txt"
 testFile = dataDir+"dev"
 wordDim = 50
+
+pickledParams = "../trainedParams/"
 
 class NeuralNetwork:
 
@@ -41,8 +50,9 @@ class NeuralNetwork:
         Feed an example forward, then calculate the derivative of the loss for each of the parameters
         and update the derivative accordingly
 
-        :param train:
-        :param labels:
+        :param numEpochs: how many iterations of sgd
+        :param saveToFile: should i write the params to a file?
+        :param warmStart: start with 20 iterations already performed?
         :return:
         """
         wordTuples = self.windowModel.generate_word_tuples()
@@ -50,7 +60,7 @@ class NeuralNetwork:
         self.trainingData = trainingMatrix
         alpha = .001
         if warmStart:
-            self.W, self.U, self.b1, self.L = joblib.load('trainedPar_20.pkl')
+            self.W, self.U, self.b1, self.L = joblib.load(pickledParams+'trainedPar_20.pkl')
         print "Beginning SGD...."
         s = time.time()
         for x in range(numEpochs):
@@ -69,24 +79,24 @@ class NeuralNetwork:
                     self.L[:, wordInd] -= dL[i*self.dimIn:(i+1)*self.dimIn, 0]
 
                 if trEx%5000==0:
-                    print "{0}\t{1:0>5d}\tElapsed Time:{2:.2f} s".format(x, trEx, time.time() - s )
+                    print "Epoch: {0}\t Training Example: {1:0>5d}\tElapsed Time:{2:.2f} s".format(x, trEx, time.time() - s )
         if saveToFile:
-            joblib.dump([self.W, self.U, self.b1, self.L], 'trainedPar_60.pkl')
+            joblib.dump([self.W, self.U, self.b1, self.L], pickledParams + 'trainedPar_new'+str(numEpochs) + '.pkl')
 
         #self._gradient_check()
         finalPreds = self.feedforward()
         print self.f1_score(labels, finalPreds)
 
-    def test(self, tf = testFile):
+    def test(self, tf = testFile, pickled=True):
         print "Testing your parameters on the test datafile (../data/dev)"
         testWindowModel = WindowModel( tf, self.vocabMatrix, (self.contextSize - 1)/2 )
-
         wordTuples = testWindowModel.generate_word_tuples()
         testMatrix, labels = self.windowModel.generate_word_vectors()
         self.trainingData = testMatrix
-
-        self.W, self.U, self.b1, self.L = joblib.load('trainedPar_60.pkl')
-        #self._gradient_check()
+        
+        #Use the 60 epoch one for now
+        if pickled:
+            self.W, self.U, self.b1, self.L = joblib.load(pickledParams+'trainedPar_60.pkl')
         finalPreds = self.feedforward()
         print self.f1_score(labels, finalPreds)
 
@@ -135,11 +145,6 @@ class NeuralNetwork:
         return 1.0/denom
 
     def costFunctionReg(self, h, y, C=.1):
-        """
-        h : m x 1
-        y : m x 1
-        hT * y = scalar
-        """
         m = h.shape[0]
         first = (np.log(h)).T.dot(-y)
         second = (np.log(1-h)).T.dot(1-y)
@@ -361,13 +366,6 @@ class NeuralNetwork:
 
 if __name__ == "__main__":
     n = NeuralNetwork()
-    n.train(40)
-    """
-    x = np.random.random((150,1))
-    y = np.random.randint(low=0, high =2, size=(150,1))
-    one = x[:50]
-    two = x[50:100]
-    three = x[100:]
-    n.train((one,two,three), np.ones((1,1)))
-    """
-    #print n.costFunctionReg(x, y)
+    #n.train(numEpochs = 60)
+    n.test(testFile, pickled= True)
+    
