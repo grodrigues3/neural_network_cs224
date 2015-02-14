@@ -86,7 +86,7 @@ class WindowModel():
 
     def generate_word_vectors(self):
         if self.allTuples == [] or self.labels == []:
-            print "Generating Tuples..."
+            print "Generating Tuples Of Word Indices e.g: (W_(n-2), W_(n-1), W, W_(n+1), W_(n+2) where W is the training/test example..."
             self.generate_word_tuples()
         m = len(self.allTuples)
         windowSize = self.windowPadding*2+1

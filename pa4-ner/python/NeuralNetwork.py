@@ -1,8 +1,12 @@
+#!/usr/bin/python
+
 """
 Neural Network Implementation For Name Entity Recognition
 Based On Programming Assignment 4
 CS 224N / Ling 284
 http://nlp.stanford.edu/~socherr/pa4_ner.pdf
+Author: Garrett Rodrigues
+Date: Summer 2014
 """
 __author__ = "grodrigues3"
 import math
@@ -45,7 +49,7 @@ class NeuralNetwork:
         self.labels      =       None
         self.trainingData=       None
 
-    def train(self, numEpochs = 10, saveToFile= False, warmStart=True):
+    def train(self, numEpochs = 10, saveToFile= False, warmStart=False):
         """
         Feed an example forward, then calculate the derivative of the loss for each of the parameters
         and update the derivative accordingly
@@ -55,10 +59,19 @@ class NeuralNetwork:
         :param warmStart: start with 20 iterations already performed?
         :return:
         """
+
+        """
+        wordTuples: a list of the all the context-centered words in the training set
+        trainingMatrix: not to be confused with wordMatrix, it has shape ROWS X COLS 
+            ROWS: the number of tuples containg the context-centered word in the training set
+            COLS: the dimensionality of each word multiplied by the number of words in each context
+        """
         wordTuples = self.windowModel.generate_word_tuples()
         trainingMatrix, labels = self.windowModel.generate_word_vectors()
         self.trainingData = trainingMatrix
         alpha = .001
+
+        #If the warm start parameter is set to true, we start with 20 epochs already completed
         if warmStart:
             self.W, self.U, self.b1, self.L = joblib.load(pickledParams+'trainedPar_20.pkl')
         print "Beginning SGD...."
@@ -85,20 +98,26 @@ class NeuralNetwork:
 
         #self._gradient_check()
         finalPreds = self.feedforward()
-        print self.f1_score(labels, finalPreds)
+        print "F1 Score (Train)\t:", self.f1_score(labels, finalPreds)
 
-    def test(self, tf = testFile, pickled=True):
-        print "Testing your parameters on the test datafile (../data/dev)"
+    def test(self, tf = testFile, pickled=False):
+
+        """
+        test: test the trained model on some new data
+        tf: the name of the testFile (leave as the default unless you have another file with correctly formatted labeled data)
+        pickled: use the paramters from a previously trained model or the ones associated with this object
+        """
+        print "Testing your parameters on the test datafile (../data/dev)..."
         testWindowModel = WindowModel( tf, self.vocabMatrix, (self.contextSize - 1)/2 )
         wordTuples = testWindowModel.generate_word_tuples()
         testMatrix, labels = self.windowModel.generate_word_vectors()
         self.trainingData = testMatrix
         
-        #Use the 60 epoch one for now
+        #Use the 60 epoch params that were pretrained for us
         if pickled:
-            self.W, self.U, self.b1, self.L = joblib.load(pickledParams+'trainedPar_60.pkl')
+            self.W, self.U, self.b1, self.L = joblib.load(pickledParams+'trainedPar_20.pkl')
         finalPreds = self.feedforward()
-        print self.f1_score(labels, finalPreds)
+        print "F1 Score:\t", self.f1_score(labels, finalPreds)
 
     def f1_score(self, trueVals, predictions):
         trueVals = trueVals.T
@@ -364,8 +383,13 @@ class NeuralNetwork:
                                               self.W.shape, self.U.shape, self.b1)
 
 
+
 if __name__ == "__main__":
     n = NeuralNetwork()
-    #n.train(numEpochs = 60)
-    n.test(testFile, pickled= True)
+    #If you want to train then test the model
+    n.train(numEpochs = 60)
+    n.test(testFile)
+    
+    #If you want to test the pickled model directly without any training
+    #n.test(testFile, pickled=True)
     
