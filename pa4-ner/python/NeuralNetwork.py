@@ -387,7 +387,7 @@ class NeuralNetwork:
 if __name__ == "__main__":
     n = NeuralNetwork()
     #If you want to train then test the model
-    n.train(numEpochs = 60)
+    n.train(numEpochs = 60, saveToFile = True)
     n.test(testFile)
     
     #If you want to test the pickled model directly without any training
