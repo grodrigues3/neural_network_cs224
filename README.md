@@ -6,7 +6,6 @@ http://nlp.stanford.edu/~socherr/pa4_ner.pdf
 
 The model consists of a 3 layer neural network with a single hidden layer and binary output that indicates whether a given word belongs to the named entity class PERSON.  The training data consists of a word, label pairs indicating whether or not the given word belongs to the class PERSON. 
 
-
 There directory structure is as follows:
 
     pa4-ner/
@@ -31,3 +30,10 @@ Base Rates:
 The train file contains 203621 words total
     192493 :    0.945349 
     11128  :    0.005465
+
+TO RUN THE FILE:
+    1) Navigate to the python directory
+    2) If you want to train and test the model (may take half hr - hr), run the NeuralNetwork.py file as is
+    3) If you'd like to just test using already trained parameters  (ran for 60 epochs), uncomment the last line of the file
+        and comment out the two preceeding lines, then run NeuralNetwork.py
+
